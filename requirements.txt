@@ -1,0 +1,5 @@
+aiofiles
+bencoder.pyx
+chardet
+mala
+git+https://github.com/aio-libs/aiomysql@master#egg=aiomysql
