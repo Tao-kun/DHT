@@ -187,9 +187,9 @@ class Crawler(asyncio.DatagramProtocol):
             # Bootstrap
             self.find_node(addr=node)
 
-        asyncio.ensure_future(self.info_looger(), loop=self.loop)
         asyncio.ensure_future(self.auto_find_nodes(), loop=self.loop)
         asyncio.ensure_future(self.auto_get_metainfo(), loop=self.loop)
+        asyncio.ensure_future(self.info_looger(), loop=self.loop)
         self.loop.run_forever()
         self.loop.close()
 
@@ -430,7 +430,7 @@ class Crawler(asyncio.DatagramProtocol):
                     await connect.commit()
                     await cursor.close()
             logging.info(
-                "There are {} torrents' information in database. Fetch {} torrent(s) now.".format(
+                "There are {} torrents in database. Fetch {} torrent(s) now.".format(
                     torrent_count, announce_queue_count)
             )
             await asyncio.sleep(self.interval * 10)
