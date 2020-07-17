@@ -430,7 +430,7 @@ class Crawler(asyncio.DatagramProtocol):
                     await connect.commit()
                     await cursor.close()
             logging.info(
-                "There are {} torrents in database. Fetch {} torrent(s) now.".format(
+                "There are {} torrent(s) in database. Fetch {} torrent(s) now.".format(
                     torrent_count, announce_queue_count)
             )
             await asyncio.sleep(self.interval * 10)
