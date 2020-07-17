@@ -2,6 +2,7 @@ import asyncio
 import binascii
 import glob
 import ipaddress
+import logging
 import os
 import random
 import signal
@@ -26,6 +27,7 @@ connect_dict = {
     'db': 'dht',
     'charset': 'utf8mb4'
 }
+logging.basicConfig(level=logging.INFO)
 
 
 def proper_infohash(infohash):
@@ -185,6 +187,7 @@ class Crawler(asyncio.DatagramProtocol):
             # Bootstrap
             self.find_node(addr=node)
 
+        asyncio.ensure_future(self.info_looger(), loop=self.loop)
         asyncio.ensure_future(self.auto_find_nodes(), loop=self.loop)
         asyncio.ensure_future(self.auto_get_metainfo(), loop=self.loop)
         self.loop.run_forever()
@@ -327,7 +330,7 @@ class Crawler(asyncio.DatagramProtocol):
         }, addr=addr)
 
     async def handle_get_peers(self, infohash, addr):
-        # print(
+        # logging.info(
         #    "Receive get peers message from DHT {}. Infohash: {}.".format(
         #        addr, infohash
         #    )
@@ -337,7 +340,7 @@ class Crawler(asyncio.DatagramProtocol):
         pass
 
     async def handle_announce_peer(self, infohash, addr, peer_addr):
-        # print(
+        # logging.info(
         #    "Receive announce peer message from DHT {}. Infohash: {}. Peer address:{}".format(
         #        addr, infohash, peer_addr
         #    )
@@ -356,7 +359,7 @@ class Crawler(asyncio.DatagramProtocol):
 
     async def get_metainfo(self, infohash, addr):
         async with self.fetch_metainfo_semaphore:
-            filename = 'torrent/{}.torrent'.format(infohash.lower())
+            filename = '/root/torrent/{}.torrent'.format(infohash.lower())
             if len(glob.glob(filename)) == 0:
                 metainfo = await get_metadata(
                     infohash, addr[0], addr[1], loop=self.loop
@@ -372,7 +375,7 @@ class Crawler(asyncio.DatagramProtocol):
                 if metainfo is not None:
                     name = get_filename(metainfo)
                     size = get_file_size(metainfo)
-                    print(size, name, infohash)
+                    logging.info(size, name, infohash)
                     file_content = bencoder.bencode({b'info': metainfo})
                     async with aiofiles.open(filename, mode='wb') as f:
                         await f.write(file_content)
@@ -414,6 +417,23 @@ class Crawler(asyncio.DatagramProtocol):
 
     async def handler(self, infohash, addr):
         pass
+
+    async def info_looger(self):
+        while self.__running:
+            async with self.database_semaphore:
+                async with self.connection_pool.acquire() as connect:
+                    cursor = await connect.cursor()
+                    await cursor.execute(base_sql.torrent_count)
+                    (torrent_count,) = await cursor.fetchone()
+                    await cursor.execute(base_sql.announce_queue_count)
+                    (announce_queue_count,) = await cursor.fetchone()
+                    await connect.commit()
+                    await cursor.close()
+            logging.info(
+                "There are {} torrents' information in database. Fetch {} torrent(s) now.".format(
+                    torrent_count, announce_queue_count)
+            )
+            await asyncio.sleep(self.interval * 10)
 
 
 if __name__ == '__main__':
