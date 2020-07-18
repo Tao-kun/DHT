@@ -18,4 +18,4 @@ clean_announce_queue = """delete from announce_queue where `lock` = 1;"""
 
 torrent_count = """select count(info_hash) from torrent;"""
 
-announce_queue_count = """select count(info_hash) from announce_queue;"""
+announce_queue_count = """select count(info_hash) from announce_queue where `lock` = 1;"""

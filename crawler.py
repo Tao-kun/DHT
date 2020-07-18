@@ -375,7 +375,11 @@ class Crawler(asyncio.DatagramProtocol):
                 if metainfo is not None:
                     name = get_filename(metainfo)
                     size = get_file_size(metainfo)
-                    logging.info(size, name, infohash)
+                    logging.info(
+                        "Hash: {}. Name: {}. Size: {}".format(
+                            infohash, name, size
+                        )
+                    )
                     file_content = bencoder.bencode({b'info': metainfo})
                     async with aiofiles.open(filename, mode='wb') as f:
                         await f.write(file_content)
@@ -430,8 +434,9 @@ class Crawler(asyncio.DatagramProtocol):
                     await connect.commit()
                     await cursor.close()
             logging.info(
-                "There are {} torrent(s) in database. Fetching {} torrent(s) now.".format(
-                    torrent_count, announce_queue_count)
+                "{} torrent(s) in database. Fetching {} torrent(s) now.".format(
+                    torrent_count, announce_queue_count
+                )
             )
             await asyncio.sleep(self.interval * 10)
 
