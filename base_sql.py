@@ -6,7 +6,7 @@ on duplicate key update insert_time=current_timestamp();"""
 get_size_in_announce_queue = """select count(info_hash) from announce_queue where `lock` != 1;"""
 
 get_one_in_announce_queue = """select info_hash, ip_addr, port from announce_queue 
-where `lock` != 1 order by insert_time desc limit 1;"""
+where `lock` != 1 order by insert_time desc limit 1 for update;"""
 
 set_lock = """update announce_queue set `lock`=1 where info_hash = '{info_hash}';"""
 
