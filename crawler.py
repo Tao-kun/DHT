@@ -1,6 +1,8 @@
 import asyncio
 import binascii
+import configparser
 import glob
+import hashlib
 import ipaddress
 import logging
 import os
@@ -19,13 +21,16 @@ from mala import get_metadata
 
 import base_sql
 
+cfg = configparser.ConfigParser()
+cfg.read('config.ini')
+
 connect_dict = {
-    'host': '127.0.0.1',
-    'port': 3306,
-    'user': 'root',
-    'password': 'ExaMp1e_pAssW0rd',
-    'db': 'dht',
-    'charset': 'utf8mb4'
+    'host': cfg.get('mysql', 'host'),
+    'port': int(cfg.get('mysql', 'port')),
+    'user': cfg.get('mysql', 'user'),
+    'password': cfg.get('mysql', 'password'),
+    'db': cfg.get('mysql', 'db'),
+    'charset': cfg.get('mysql', 'charset')
 }
 logging.basicConfig(level=logging.INFO)
 
@@ -80,6 +85,10 @@ def get_file_size(meta_info):
         for file in meta_info[b'files']:
             length += file[b'length']
     return length
+
+
+def get_meta_hash(meta_info):
+    return hashlib.sha1(bencoder.bencode(meta_info)).hexdigest().upper()
 
 
 BOOTSTRAP_NODES = (
@@ -359,7 +368,7 @@ class Crawler(asyncio.DatagramProtocol):
 
     async def get_metainfo(self, infohash, addr):
         async with self.fetch_metainfo_semaphore:
-            filename = '/root/torrent/{}.torrent'.format(infohash.lower())
+            filename = '{}{}{}.torrent'.format(cfg.get('torrent', 'save_path'), os.sep, infohash.lower())
             if len(glob.glob(filename)) == 0:
                 metainfo = await get_metadata(
                     infohash, addr[0], addr[1], loop=self.loop
@@ -373,6 +382,9 @@ class Crawler(asyncio.DatagramProtocol):
                             await cursor.close()
                             return
                 if metainfo is not None:
+                    # hash error
+                    if infohash != get_meta_hash(metainfo):
+                        return
                     name = get_filename(metainfo)
                     size = get_file_size(metainfo)
                     logging.info(
