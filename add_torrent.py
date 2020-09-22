@@ -26,10 +26,10 @@ async def _insert(connection_pool, filename):
             (data,) = await cursor.fetchone()
             await connect.commit()
             if data == 0:
-                await cursor.execute(base_sql.insert_into_torrent(name=name, info_hash=meta_hash, size=size))
+                await cursor.execute(base_sql.insert_into_torrent.format(name=name, info_hash=meta_hash, size=size))
+                print('insert {} {} {}'.format(meta_hash, name, size))
             await connect.commit()
             await cursor.close()
-    print('insert {} {} {}'.format(meta_hash, name, size))
 
 
 async def _task(loop, connection_pool):
@@ -41,7 +41,7 @@ async def _task(loop, connection_pool):
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    connection_pool = aiomysql.connect(loop=loop, **crawler.connect_dict)
+    connection_pool = loop.run_until_complete(aiomysql.create_pool(loop=loop, **crawler.connect_dict))
     loop.run_until_complete(_task(loop, connection_pool))
     pending = asyncio.all_tasks(loop=loop)
     loop.run_until_complete(asyncio.gather(*pending))
