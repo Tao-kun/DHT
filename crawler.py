@@ -99,58 +99,6 @@ BOOTSTRAP_NODES = (
     ('tracker.opentrackr.org', 1337)
 )
 
-
-class Node(object):
-    def __init__(self, node_id, addr, last_ping=None):
-        self.node_id = node_id
-        self.addr = addr
-        if last_ping is None:
-            self.last_ping = time.time()
-        else:
-            self.last_ping = last_ping
-
-
-class RouteTable(object):
-    def __init__(self, size=256):
-        self.nodes = dict()
-        self.size = size
-
-    def __remove_unactived(self):
-        keys = list(self.keys())
-        keys.sort(key=lambda x: self[x].last_ping)
-        self.pop(keys[0])
-
-    def __contains__(self, item):
-        return item in self.nodes.keys()
-
-    def __len__(self):
-        return len(self.nodes)
-
-    def __getitem__(self, key):
-        return self.nodes[key]
-
-    def __setitem__(self, key, value):
-        if key not in self.nodes.keys():
-            self.nodes[key] = Node(key, value)
-        else:
-            self.nodes[key].addr = value
-            self.nodes[key].last_ping = time.time()
-
-        if len(self.nodes) > self.size:
-            self.__remove_unactived()
-
-    def __iter__(self):
-        return iter(self.nodes.values())
-
-    def keys(self):
-        return self.nodes.keys()
-
-    def pop(self, node_id):
-        if node_id in self.nodes.keys():
-            return self.nodes.pop(node_id)
-        return None
-
-
 class Crawler(asyncio.DatagramProtocol):
     """
     This class' implementation is from https://github.com/whtsky/maga/blob/master/maga.py
@@ -158,7 +106,6 @@ class Crawler(asyncio.DatagramProtocol):
 
     def __init__(self, loop=None, bootstrap_nodes=BOOTSTRAP_NODES, interval=3):
         self.node_id = random_node_id()
-        self.table = RouteTable()
         self.transport = None
         self.loop = loop or asyncio.get_event_loop()
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
@@ -202,11 +149,6 @@ class Crawler(asyncio.DatagramProtocol):
         self.loop.run_forever()
         self.loop.close()
 
-    def random_node_in_table(self):
-        if len(self.table) != 0:
-            return self.table[random.choice(list(self.table.keys()))], None
-        return None, random_node_id()
-
     def connection_made(self, transport):
         self.transport = transport
 
@@ -220,13 +162,7 @@ class Crawler(asyncio.DatagramProtocol):
 
     def find_node(self, addr, target_node_id=None):
         if not target_node_id:
-            target, _ = self.random_node_in_table()
-            if target is None:
-                target_node_id = _
-            else:
-                if target.addr == addr:
-                    return
-                target_node_id = target.node_id
+            target_node_id = random_node_id()
         self.send_message({
             "t": "aa",
             "y": "q",
@@ -266,7 +202,6 @@ class Crawler(asyncio.DatagramProtocol):
     def handle_response(self, msg, addr):
         args = msg[b"r"]
         node_id = args[b"id"]
-        self.table[node_id] = addr
         if b"nodes" in args:
             for node_id, ip, port in split_nodes(args[b"nodes"]):
                 self.ping(addr=(ip, port))
@@ -277,7 +212,6 @@ class Crawler(asyncio.DatagramProtocol):
         query_type = msg[b"q"]
         if node_id == self.node_id:
             return
-        self.table[node_id] = addr
         if query_type == b"get_peers":
             infohash = args[b"info_hash"]
             infohash = proper_infohash(infohash)
