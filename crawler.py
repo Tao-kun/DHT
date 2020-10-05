@@ -109,6 +109,7 @@ class Crawler(asyncio.DatagramProtocol):
         self.transport = None
         self.loop = loop or asyncio.get_event_loop()
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
+        self.database_batch = 32
         self.database_semaphore = asyncio.Semaphore(64)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(128)
         self.bootstrap_nodes = bootstrap_nodes
@@ -356,15 +357,16 @@ class Crawler(asyncio.DatagramProtocol):
                     if data == 0:
                         await asyncio.sleep(self.interval)
                         continue
-                    await cursor.execute(base_sql.get_one_in_announce_queue)
-                    data = await cursor.fetchone()
-                    infohash = data[0]
-                    peer_addr = (data[1], data[2])
-                    await cursor.execute(base_sql.set_lock.format(info_hash=infohash))
+                    for i in range(min(self.database_batch, data)):
+                        await cursor.execute(base_sql.get_one_in_announce_queue)
+                        data = await cursor.fetchone()
+                        infohash = data[0]
+                        peer_addr = (data[1], data[2])
+                        await cursor.execute(base_sql.set_lock.format(info_hash=infohash))
+                        asyncio.ensure_future(self.get_metainfo(infohash, peer_addr), loop=self.loop)
                     await connect.commit()
                     await cursor.close()
-                    asyncio.ensure_future(self.get_metainfo(infohash, peer_addr), loop=self.loop)
-                    await asyncio.sleep(self.interval)
+                await asyncio.sleep(self.interval)
 
     async def handler(self, infohash, addr):
         pass
