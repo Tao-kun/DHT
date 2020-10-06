@@ -302,16 +302,16 @@ class Crawler(asyncio.DatagramProtocol):
                 await cursor.close()
 
     async def get_metainfo(self, infohash, addr):
-    	fail = False
+        fail = False
         async with self.fetch_metainfo_semaphore:
             filename = '{}{}{}.torrent'.format(cfg.get('torrent', 'save_path'), os.sep, infohash.lower())
             if len(glob.glob(filename)) == 0:
                 try:
                     metainfo = await asyncio.wait_for(
-	                    get_metadata(
-	                        infohash, addr[0], addr[1], loop=self.loop
-	                    ),
-	                    timeout=self.interval * 20)
+                        get_metadata(
+                            infohash, addr[0], addr[1], loop=self.loop
+                        ),
+                        timeout=self.interval * 20)
                 except:
                     fail = True
                 if fail or (isinstance(metainfo, bool) and metainfo is False):
