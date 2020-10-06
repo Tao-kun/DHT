@@ -109,7 +109,7 @@ class Crawler(asyncio.DatagramProtocol):
         self.transport = None
         self.loop = loop or asyncio.get_event_loop()
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
-        self.database_batch = 32
+        self.database_batch = 48
         self.database_semaphore = asyncio.Semaphore(64)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(128)
         self.bootstrap_nodes = bootstrap_nodes
@@ -302,13 +302,19 @@ class Crawler(asyncio.DatagramProtocol):
                 await cursor.close()
 
     async def get_metainfo(self, infohash, addr):
+    	fail = False
         async with self.fetch_metainfo_semaphore:
             filename = '{}{}{}.torrent'.format(cfg.get('torrent', 'save_path'), os.sep, infohash.lower())
             if len(glob.glob(filename)) == 0:
-                metainfo = await get_metadata(
-                    infohash, addr[0], addr[1], loop=self.loop
-                )
-                if isinstance(metainfo, bool) and metainfo is False:
+                try:
+                    metainfo = await asyncio.wait_for(
+	                    get_metadata(
+	                        infohash, addr[0], addr[1], loop=self.loop
+	                    ),
+	                    timeout=self.interval * 20)
+                except:
+                    fail = True
+                if fail or (isinstance(metainfo, bool) and metainfo is False):
                     async with self.database_semaphore:
                         async with self.connection_pool.acquire() as connect:
                             cursor = await connect.cursor()
@@ -363,6 +369,7 @@ class Crawler(asyncio.DatagramProtocol):
                         infohash = data[0]
                         peer_addr = (data[1], data[2])
                         await cursor.execute(base_sql.set_lock.format(info_hash=infohash))
+                        await connect.commit()
                         asyncio.ensure_future(self.get_metainfo(infohash, peer_addr), loop=self.loop)
                     await connect.commit()
                     await cursor.close()
