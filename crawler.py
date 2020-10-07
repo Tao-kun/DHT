@@ -363,9 +363,10 @@ class Crawler(asyncio.DatagramProtocol):
                     if data == 0:
                         await asyncio.sleep(self.interval)
                         continue
-                    for i in range(min(self.database_batch, data)):
-                        await cursor.execute(base_sql.get_one_in_announce_queue)
-                        data = await cursor.fetchone()
+                    await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=min(self.database_batch, data)))
+                    data_list = await cursor.fetchall()
+                    await connect.commit()
+                    for data in data_list:
                         if data is None:
                             continue
                         infohash = data[0]
