@@ -366,6 +366,8 @@ class Crawler(asyncio.DatagramProtocol):
                     for i in range(min(self.database_batch, data)):
                         await cursor.execute(base_sql.get_one_in_announce_queue)
                         data = await cursor.fetchone()
+                        if data is None:
+                            continue
                         infohash = data[0]
                         peer_addr = (data[1], data[2])
                         await cursor.execute(base_sql.set_lock.format(info_hash=infohash))
