@@ -17,7 +17,7 @@ async def _insert(connection_pool, filename):
         async with aiofiles.open(filename, 'rb') as f:
             data = await f.read()
     try:
-        metainfo = bencoder.bdecode(data)[b'info']
+        metainfo = bencoder.bdecode2(data)[0][b'info']
     except:
         print('error: {}'.format(filename))
         return

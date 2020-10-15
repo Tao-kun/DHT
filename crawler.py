@@ -183,7 +183,7 @@ class Crawler(asyncio.DatagramProtocol):
             self.handle_message(msg, addr)
         except Exception as e:
             self.send_message(data={
-                "t": msg["t"],
+                "t": msg[b"t"],
                 "y": "e",
                 "e": [202, "Server Error"]
             }, addr=addr)
@@ -201,16 +201,22 @@ class Crawler(asyncio.DatagramProtocol):
             )
 
     def handle_response(self, msg, addr):
-        args = msg[b"r"]
-        node_id = args[b"id"]
+        try:
+            args = msg[b"r"]
+            node_id = args[b"id"]
+        except:
+            return
         if b"nodes" in args:
             for node_id, ip, port in split_nodes(args[b"nodes"]):
                 self.ping(addr=(ip, port))
 
     async def handle_query(self, msg, addr):
-        args = msg[b"a"]
-        node_id = args[b"id"]
-        query_type = msg[b"q"]
+        try:
+            args = msg[b"a"]
+            node_id = args[b"id"]
+            query_type = msg[b"q"]
+        except:
+            return
         if node_id == self.node_id:
             return
         if query_type == b"get_peers":
