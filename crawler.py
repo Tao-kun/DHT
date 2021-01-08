@@ -111,7 +111,8 @@ class Crawler(asyncio.DatagramProtocol):
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
         self.database_semaphore = asyncio.Semaphore(64)
-        self.fetch_metainfo_semaphore = asyncio.Semaphore(128)
+        self.max_fetch_task = 128
+        self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
         self.bootstrap_nodes = bootstrap_nodes
         self.__running = False
         self.interval = interval
@@ -146,7 +147,7 @@ class Crawler(asyncio.DatagramProtocol):
 
         asyncio.ensure_future(self.auto_find_nodes(), loop=self.loop)
         asyncio.ensure_future(self.auto_get_metainfo(), loop=self.loop)
-        asyncio.ensure_future(self.info_looger(), loop=self.loop)
+        asyncio.ensure_future(self.info_logger(), loop=self.loop)
         self.loop.run_forever()
         self.loop.close()
 
@@ -364,12 +365,14 @@ class Crawler(asyncio.DatagramProtocol):
             async with self.database_semaphore:
                 async with self.connection_pool.acquire() as connect:
                     cursor = await connect.cursor()
-                    await cursor.execute(base_sql.get_size_in_announce_queue)
-                    (data,) = await cursor.fetchone()
-                    if data == 0:
+                    await cursor.execute(base_sql.get_announce_queue_size)
+                    (announce_queue_size,) = await cursor.fetchone()
+                    await cursor.execute(base_sql.announce_queue_fetching_count)
+                    (announce_queue_fetching_count,) = await cursor.fetchone()
+                    if announce_queue_size == 0 or announce_queue_fetching_count >= self.max_fetch_task * 4:
                         await asyncio.sleep(self.interval)
                         continue
-                    await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=min(self.database_batch, data)))
+                    await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=min(self.database_batch, announce_queue_size)))
                     data_list = await cursor.fetchall()
                     await connect.commit()
                     for data in data_list:
@@ -387,20 +390,20 @@ class Crawler(asyncio.DatagramProtocol):
     async def handler(self, infohash, addr):
         pass
 
-    async def info_looger(self):
+    async def info_logger(self):
         while self.__running:
             async with self.database_semaphore:
                 async with self.connection_pool.acquire() as connect:
                     cursor = await connect.cursor()
                     await cursor.execute(base_sql.torrent_count)
                     (torrent_count,) = await cursor.fetchone()
-                    await cursor.execute(base_sql.announce_queue_count)
-                    (announce_queue_count,) = await cursor.fetchone()
+                    await cursor.execute(base_sql.announce_queue_fetching_count)
+                    (announce_queue_fetching_count,) = await cursor.fetchone()
                     await connect.commit()
                     await cursor.close()
             logging.info(
                 "{} torrent(s) in database. Fetching {} torrent(s) now.".format(
-                    torrent_count, announce_queue_count
+                    torrent_count, announce_queue_fetching_count
                 )
             )
             await asyncio.sleep(self.interval * 10)
