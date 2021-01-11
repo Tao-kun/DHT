@@ -369,10 +369,14 @@ class Crawler(asyncio.DatagramProtocol):
                     (announce_queue_size,) = await cursor.fetchone()
                     await cursor.execute(base_sql.announce_queue_fetching_count)
                     (announce_queue_fetching_count,) = await cursor.fetchone()
-                    if announce_queue_size == 0 or announce_queue_fetching_count >= self.max_fetch_task * 4:
+                    if announce_queue_size == 0:
                         await asyncio.sleep(self.interval)
                         continue
-                    await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=min(self.database_batch, announce_queue_size)))
+                    elif announce_queue_fetching_count >= self.max_fetch_task:
+                        limit_factor = int(announce_queue_fetching_count / self.max_fetch_task)
+                        await asyncio.sleep(self.interval * limit_factor)
+                    limit = min(self.database_batch, announce_queue_size)
+                    await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=limit))
                     data_list = await cursor.fetchall()
                     await connect.commit()
                     for data in data_list:
