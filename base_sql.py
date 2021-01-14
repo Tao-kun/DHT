@@ -20,4 +20,6 @@ torrent_count = """select count(info_hash) from torrent;"""
 
 announce_queue_fetching_count = """select count(info_hash) from announce_queue where `lock` = 1;"""
 
+announce_queue_pending_count = """select count(info_hash) from announce_queue where `lock` = 0;"""
+
 torrent_exist = """select count(*) from torrent where `info_hash` = '{info_hash}';"""

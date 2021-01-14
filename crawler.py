@@ -5,6 +5,7 @@ import glob
 import hashlib
 import ipaddress
 import logging
+import math
 import os
 import random
 import signal
@@ -111,6 +112,7 @@ class Crawler(asyncio.DatagramProtocol):
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
         self.database_semaphore = asyncio.Semaphore(64)
+        self.database_queue = asyncio.Queue()
         self.max_fetch_task = 128
         self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
         self.bootstrap_nodes = bootstrap_nodes
@@ -147,6 +149,7 @@ class Crawler(asyncio.DatagramProtocol):
 
         asyncio.ensure_future(self.auto_find_nodes(), loop=self.loop)
         asyncio.ensure_future(self.auto_get_metainfo(), loop=self.loop)
+        asyncio.ensure_future(self.handle_database_queue(), loop=self.loop)
         asyncio.ensure_future(self.info_logger(), loop=self.loop)
         self.loop.run_forever()
         self.loop.close()
@@ -298,15 +301,29 @@ class Crawler(asyncio.DatagramProtocol):
         # )
         if len(infohash) != 40:
             return
-        async with self.database_semaphore:
-            async with self.connection_pool.acquire() as connect:
-                cursor = await connect.cursor()
-                await cursor.execute(base_sql.insert_into_announce_queue.format(
-                    info_hash=infohash,
-                    ip_addr=peer_addr[0],
-                    port=peer_addr[1]))
-                await connect.commit()
-                await cursor.close()
+        await self.database_queue.put((infohash, addr, peer_addr))
+
+    async def handle_database_queue(self):
+        while self.__running:
+            if self.database_queue.empty():
+                await asyncio.sleep(self.interval)
+                continue
+            peer_list=[]
+            while not self.database_queue.empty():
+                try:
+                    peer_list.append(self.database_queue.get_nowait())
+                except asyncio.QueueEmpty as e:
+                    break
+            async with self.database_semaphore:
+                async with self.connection_pool.acquire() as connect:
+                    cursor = await connect.cursor()
+                    for peer_info in peer_list:
+                        await cursor.execute(base_sql.insert_into_announce_queue.format(
+                            info_hash=peer_info[0],
+                            ip_addr=peer_info[2][0],
+                            port=peer_info[2][1]))
+                    await connect.commit()
+                    await cursor.close()
 
     async def get_metainfo(self, infohash, addr):
         fail = False
@@ -373,8 +390,9 @@ class Crawler(asyncio.DatagramProtocol):
                         await asyncio.sleep(self.interval)
                         continue
                     elif announce_queue_fetching_count >= self.max_fetch_task:
-                        limit_factor = int(announce_queue_fetching_count / self.max_fetch_task)
-                        await asyncio.sleep(self.interval * limit_factor)
+                        limit_factor = max(16, math.ceil(announce_queue_fetching_count / self.max_fetch_task))
+                        delay_time = self.interval * limit_factor
+                        await asyncio.sleep(delay_time)
                     limit = min(self.database_batch, announce_queue_size)
                     await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=limit))
                     data_list = await cursor.fetchall()
@@ -403,11 +421,13 @@ class Crawler(asyncio.DatagramProtocol):
                     (torrent_count,) = await cursor.fetchone()
                     await cursor.execute(base_sql.announce_queue_fetching_count)
                     (announce_queue_fetching_count,) = await cursor.fetchone()
+                    await cursor.execute(base_sql.announce_queue_pending_count)
+                    (announce_queue_pending_count,) = await cursor.fetchone()
                     await connect.commit()
                     await cursor.close()
             logging.info(
-                "{} torrent(s) in database. Fetching {} torrent(s) now.".format(
-                    torrent_count, announce_queue_fetching_count
+                "{} torrent(s) in database. Fetching {} torrent(s) and {} torrent(s) pending.".format(
+                    torrent_count, announce_queue_fetching_count, announce_queue_pending_count
                 )
             )
             await asyncio.sleep(self.interval * 10)
