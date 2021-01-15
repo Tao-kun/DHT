@@ -394,18 +394,21 @@ class Crawler(asyncio.DatagramProtocol):
                         delay_time = self.interval * limit_factor
                         await asyncio.sleep(delay_time)
                     limit = min(self.database_batch, announce_queue_size)
-                    await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=limit))
-                    data_list = await cursor.fetchall()
-                    await connect.commit()
-                    for data in data_list:
-                        if data is None:
-                            continue
-                        infohash = data[0]
-                        peer_addr = (data[1], data[2])
-                        await cursor.execute(base_sql.set_lock.format(info_hash=infohash))
+                    try:
+                        await cursor.execute(base_sql.get_batch_in_announce_queue.format(limit=limit))
+                        data_list = await cursor.fetchall()
                         await connect.commit()
-                        asyncio.ensure_future(self.get_metainfo(infohash, peer_addr), loop=self.loop)
-                    await connect.commit()
+                        for data in data_list:
+                            if data is None:
+                                continue
+                            infohash = data[0]
+                            peer_addr = (data[1], data[2])
+                            await cursor.execute(base_sql.set_lock.format(info_hash=infohash))
+                            await connect.commit()
+                            asyncio.ensure_future(self.get_metainfo(infohash, peer_addr), loop=self.loop)
+                        await connect.commit()
+                    except pymysql.err.OperationalError as e:
+                        await connect.rollback()
                     await cursor.close()
                 await asyncio.sleep(self.interval)
 
@@ -426,7 +429,7 @@ class Crawler(asyncio.DatagramProtocol):
                     await connect.commit()
                     await cursor.close()
             logging.info(
-                "{} torrent(s) in database. Fetching {} torrent(s) and {} torrent(s) pending.".format(
+                "{} torrent(s) in database, Fetching: {}, Pending: {}.".format(
                     torrent_count, announce_queue_fetching_count, announce_queue_pending_count
                 )
             )
