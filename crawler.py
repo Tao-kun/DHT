@@ -316,13 +316,16 @@ class Crawler(asyncio.DatagramProtocol):
                     break
             async with self.database_semaphore:
                 async with self.connection_pool.acquire() as connect:
-                    cursor = await connect.cursor()
-                    for peer_info in peer_list:
-                        await cursor.execute(base_sql.insert_into_announce_queue.format(
-                            info_hash=peer_info[0],
-                            ip_addr=peer_info[2][0],
-                            port=peer_info[2][1]))
-                    await connect.commit()
+                    try:
+                        cursor = await connect.cursor()
+                        for peer_info in peer_list:
+                            await cursor.execute(base_sql.insert_into_announce_queue.format(
+                                info_hash=peer_info[0],
+                                ip_addr=peer_info[2][0],
+                                port=peer_info[2][1]))
+                        await connect.commit()
+                    except pymysql.err.OperationalError as e:
+                        await connect.rollback()
                     await cursor.close()
 
     async def get_metainfo(self, infohash, addr):
