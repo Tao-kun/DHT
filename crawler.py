@@ -18,6 +18,7 @@ import aiofiles
 import aiomysql
 import bencoder
 import chardet
+import pymysql
 from mala import get_metadata
 
 import base_sql
