@@ -367,12 +367,16 @@ class Crawler(asyncio.DatagramProtocol):
                     async with self.database_semaphore:
                         async with self.connection_pool.acquire() as connect:
                             cursor = await connect.cursor()
-                            await cursor.execute(base_sql.insert_into_torrent.format(
-                                name=aiomysql.escape_string(name),
-                                info_hash=infohash,
-                                size=size))
-                            await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
-                            await connect.commit()
+                            try:
+                                await cursor.execute(base_sql.insert_into_torrent.format(
+                                    name=aiomysql.escape_string(name),
+                                    info_hash=infohash,
+                                    size=size))
+                            except pymysql.err.IntegrityError:
+                                await cursor.rollback()
+                            finally:
+                                await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
+                                await connect.commit()
                             await cursor.close()
 
     async def auto_get_metainfo(self):
