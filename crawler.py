@@ -56,7 +56,7 @@ def split_nodes(nodes):
     for i in range(0, length, 26):
         nid = nodes[i:i + 20]
         ip = inet_ntoa(nodes[i + 20:i + 24])
-        port = unpack("!H", nodes[i + 24:i + 26])[0]
+        port = unpack('!H', nodes[i + 24:i + 26])[0]
         yield nid, ip, port
 
 
@@ -94,17 +94,17 @@ def get_meta_hash(meta_info):
 
 
 BOOTSTRAP_NODES = (
-    ("router.bittorrent.com", 6881),
-    ("dht.transmissionbt.com", 6881),
-    ("router.utorrent.com", 6881),
+    ('router.bittorrent.com', 6881),
+    ('dht.transmissionbt.com', 6881),
+    ('router.utorrent.com', 6881),
     ('tracker.openbittorrent.com', 80),
     ('tracker.opentrackr.org', 1337)
 )
 
 class Crawler(asyncio.DatagramProtocol):
-    """
+    '''
     This class' implementation is from https://github.com/whtsky/maga/blob/master/maga.py
-    """
+    '''
 
     def __init__(self, loop=None, bootstrap_nodes=BOOTSTRAP_NODES, interval=3):
         self.node_id = random_node_id()
@@ -163,19 +163,19 @@ class Crawler(asyncio.DatagramProtocol):
         self.transport.close()
 
     def send_message(self, data, addr):
-        data.setdefault("t", b"tt")
+        data.setdefault('t', b'tt')
         self.transport.sendto(bencoder.bencode(data), addr)
 
     def find_node(self, addr, target_node_id=None):
         if not target_node_id:
             target_node_id = random_node_id()
         self.send_message({
-            "t": "aa",
-            "y": "q",
-            "q": "find_node",
-            "a": {
-                "id": self.node_id,
-                "target": target_node_id
+            't': 'aa',
+            'y': 'q',
+            'q': 'find_node',
+            'a': {
+                'id': self.node_id,
+                'target': target_node_id
             }
         }, addr=addr)
 
@@ -188,17 +188,17 @@ class Crawler(asyncio.DatagramProtocol):
             self.handle_message(msg, addr)
         except Exception as e:
             self.send_message(data={
-                "t": msg[b"t"],
-                "y": "e",
-                "e": [202, "Server Error"]
+                't': msg[b't'],
+                'y': 'e',
+                'e': [202, 'Server Error']
             }, addr=addr)
             raise e
 
     def handle_message(self, msg, addr):
-        msg_type = msg.get(b"y", b"e")
-        if msg_type == b"e":
+        msg_type = msg.get(b'y', b'e')
+        if msg_type == b'e':
             return
-        if msg_type == b"r":
+        if msg_type == b'r':
             return self.handle_response(msg, addr=addr)
         if msg_type == b'q':
             return asyncio.ensure_future(
@@ -207,86 +207,86 @@ class Crawler(asyncio.DatagramProtocol):
 
     def handle_response(self, msg, addr):
         try:
-            args = msg[b"r"]
-            node_id = args[b"id"]
+            args = msg[b'r']
+            node_id = args[b'id']
         except:
             return
-        if b"nodes" in args:
-            for node_id, ip, port in split_nodes(args[b"nodes"]):
+        if b'nodes' in args:
+            for node_id, ip, port in split_nodes(args[b'nodes']):
                 self.ping(addr=(ip, port))
 
     async def handle_query(self, msg, addr):
         try:
-            args = msg[b"a"]
-            node_id = args[b"id"]
-            query_type = msg[b"q"]
+            args = msg[b'a']
+            node_id = args[b'id']
+            query_type = msg[b'q']
         except:
             return
         if node_id == self.node_id:
             return
-        if query_type == b"get_peers":
-            infohash = args[b"info_hash"]
+        if query_type == b'get_peers':
+            infohash = args[b'info_hash']
             infohash = proper_infohash(infohash)
             token = infohash[:2]
             self.send_message({
-                "t": msg[b"t"],
-                "y": "r",
-                "r": {
-                    "id": self.node_id,
-                    "nodes": "",
-                    "token": token
+                't': msg[b't'],
+                'y': 'r',
+                'r': {
+                    'id': self.node_id,
+                    'nodes': '',
+                    'token': token
                 }
             }, addr=addr)
             await self.handle_get_peers(infohash, addr)
-        elif query_type == b"announce_peer":
-            infohash = args[b"info_hash"]
-            target_id = msg[b"t"]
+        elif query_type == b'announce_peer':
+            infohash = args[b'info_hash']
+            target_id = msg[b't']
             self.send_message({
-                "t": target_id,
-                "y": "r",
-                "r": {
-                    "id": self.node_id
+                't': target_id,
+                'y': 'r',
+                'r': {
+                    'id': self.node_id
                 }
             }, addr=addr)
             peer_addr = [addr[0], addr[1]]
             try:
-                peer_addr[1] = args[b"port"]
+                peer_addr[1] = args[b'port']
             except KeyError:
                 pass
             await self.handle_announce_peer(proper_infohash(infohash), addr, peer_addr)
-        elif query_type == b"find_node":
-            target_id = msg[b"t"]
+        elif query_type == b'find_node':
+            target_id = msg[b't']
             self.send_message({
-                "t": target_id,
-                "y": "r",
-                "r": {
-                    "id": self.node_id,
-                    "nodes": ""
+                't': target_id,
+                'y': 'r',
+                'r': {
+                    'id': self.node_id,
+                    'nodes': ''
                 }
             }, addr=addr)
-        elif query_type == b"ping":
+        elif query_type == b'ping':
             self.send_message({
-                "t": "tt",
-                "y": "r",
-                "r": {
-                    "id": self.node_id
+                't': 'tt',
+                'y': 'r',
+                'r': {
+                    'id': self.node_id
                 }
             }, addr=addr)
         self.find_node(addr=addr)
 
     def ping(self, addr):
         self.send_message({
-            "y": "q",
-            "t": "pg",
-            "q": "ping",
-            "a": {
-                "id": self.node_id
+            'y': 'q',
+            't': 'pg',
+            'q': 'ping',
+            'a': {
+                'id': self.node_id
             }
         }, addr=addr)
 
     async def handle_get_peers(self, infohash, addr):
         # logging.info(
-        #    "Receive get peers message from DHT {}. Infohash: {}.".format(
+        #    'Receive get peers message from DHT {}. Infohash: {}.'.format(
         #        addr, infohash
         #    )
         # )
@@ -296,7 +296,7 @@ class Crawler(asyncio.DatagramProtocol):
 
     async def handle_announce_peer(self, infohash, addr, peer_addr):
         # logging.info(
-        #    "Receive announce peer message from DHT {}. Infohash: {}. Peer address:{}".format(
+        #    'Receive announce peer message from DHT {}. Infohash: {}. Peer address:{}'.format(
         #        addr, infohash, peer_addr
         #    )
         # )
@@ -357,7 +357,7 @@ class Crawler(asyncio.DatagramProtocol):
                     name = get_filename(metainfo)
                     size = get_file_size(metainfo)
                     logging.info(
-                        "Hash: {}. Name: {}. Size: {}".format(
+                        'Hash: {}. Name: {}. Size: {}'.format(
                             infohash, name, size
                         )
                     )
@@ -437,7 +437,7 @@ class Crawler(asyncio.DatagramProtocol):
                     await connect.commit()
                     await cursor.close()
             logging.info(
-                "{} torrent(s) in database, Fetching: {}, Pending: {}.".format(
+                '{} torrent(s) in database, Fetching: {}, Pending: {}.'.format(
                     torrent_count, announce_queue_fetching_count, announce_queue_pending_count
                 )
             )

@@ -45,7 +45,7 @@ async def _task(loop, connection_pool):
         torrent_list = os.listdir(crawler.cfg.get('torrent', 'save_path'))
         for torrent_name in torrent_list:
             asyncio.ensure_future(_insert(connection_pool,
-                                          "{}{}{}".format(crawler.cfg.get('torrent', 'save_path'),
+                                          '{}{}{}'.format(crawler.cfg.get('torrent', 'save_path'),
                                                           os.sep,
                                                           torrent_name)),
                                   loop=loop)
