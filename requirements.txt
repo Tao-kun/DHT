@@ -3,3 +3,4 @@ bencoder.pyx
 chardet
 mala
 git+https://github.com/aio-libs/aiomysql@master#egg=aiomysql
+sqlalchemy>=1.4.0
