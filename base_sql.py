@@ -23,3 +23,5 @@ announce_queue_fetching_count = '''select count(info_hash) from announce_queue w
 announce_queue_pending_count = '''select count(info_hash) from announce_queue where `lock` = 0;'''
 
 torrent_exist = '''select count(*) from torrent where `info_hash` = '{info_hash}';'''
+
+delete_too_old_announce_queue = '''delete from announce_queue where `lock` = 0 and DATEDIFF(now(), insert_time) > 3;'''

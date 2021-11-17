@@ -101,6 +101,7 @@ BOOTSTRAP_NODES = (
     ('tracker.opentrackr.org', 1337)
 )
 
+
 class Crawler(asyncio.DatagramProtocol):
     '''
     This class' implementation is from https://github.com/whtsky/maga/blob/master/maga.py
@@ -309,7 +310,7 @@ class Crawler(asyncio.DatagramProtocol):
             if self.database_queue.empty():
                 await asyncio.sleep(self.interval)
                 continue
-            peer_list=[]
+            peer_list = []
             while not self.database_queue.empty():
                 try:
                     peer_list.append(self.database_queue.get_nowait())
@@ -350,7 +351,7 @@ class Crawler(asyncio.DatagramProtocol):
                         await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
                         await connect.commit()
                         await cursor.close()
-                        return
+                return
             if metainfo is not None:
                 # hash error
                 if infohash != get_meta_hash(metainfo):
@@ -385,6 +386,7 @@ class Crawler(asyncio.DatagramProtocol):
             async with self.connection_pool.acquire() as connect:
                 cursor = await connect.cursor()
                 await cursor.execute(base_sql.clean_announce_queue)
+                await cursor.execute(base_sql.delete_too_old_announce_queue)
                 await connect.commit()
                 await cursor.close()
         while self.__running:
