@@ -15,3 +15,11 @@ create table announce_queue
     insert_time timestamp default current_timestamp() not null,
     primary key (info_hash, ip_addr, port)
 );
+
+create table crawler_statistic
+(
+    totoal_count   int                                   not null,
+    fetching_count int                                   not null,
+    pending_count  int                                   not null,
+    log_time       timestamp default current_timestamp() not null primary key
+);

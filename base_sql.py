@@ -29,3 +29,6 @@ remove_too_old_announce_queue = '''delete from announce_queue where `lock` = 0 a
 
 remove_stored_in_announce_queue = '''delete from announce_queue aq where exists
 (select t.`info_hash` from torrent t where t.`info_hash`=aq.`info_hash`);'''
+
+save_statistic_log = '''insert into crawler_statistic (totoal_count, fetching_count, pending_count)
+values ({totoal_count}, {fetching_count}, {pending_count})'''
