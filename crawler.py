@@ -386,7 +386,8 @@ class Crawler(asyncio.DatagramProtocol):
             async with self.connection_pool.acquire() as connect:
                 cursor = await connect.cursor()
                 await cursor.execute(base_sql.clean_announce_queue)
-                await cursor.execute(base_sql.delete_too_old_announce_queue)
+                await cursor.execute(base_sql.remove_too_old_announce_queue)
+                await cursor.execute(base_sql.remove_stored_in_announce_queue)
                 await connect.commit()
                 await cursor.close()
         while self.__running:
