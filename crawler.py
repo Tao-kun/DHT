@@ -93,6 +93,15 @@ def get_meta_hash(meta_info):
     return hashlib.sha1(bencoder.bencode(meta_info)).hexdigest().upper()
 
 
+def sizeof_fmt(num, suffix="B"):
+    # https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
+    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
+        if abs(num) < 1024.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1024.0
+    return f"{num:.1f}Y{suffix}"
+
+
 BOOTSTRAP_NODES = (
     ('router.bittorrent.com', 6881),
     ('dht.transmissionbt.com', 6881),
@@ -361,7 +370,7 @@ class Crawler(asyncio.DatagramProtocol):
                 size = get_file_size(metainfo)
                 logging.info(
                     'Hash: {}. Name: {}. Size: {}'.format(
-                        infohash, name, size
+                        infohash, name, sizeof_fmt(size)
                     )
                 )
                 file_content = bencoder.bencode({b'info': metainfo})
