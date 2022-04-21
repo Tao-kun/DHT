@@ -119,7 +119,8 @@ class Crawler(asyncio.DatagramProtocol):
     def __init__(self, loop=None, bootstrap_nodes=BOOTSTRAP_NODES, interval=3, store_statistic=False):
         self.node_id = random_node_id()
         self.transport = None
-        self.loop = loop or asyncio.get_event_loop()
+        self.loop = loop or asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
         self.database_semaphore = asyncio.Semaphore(64)
@@ -349,7 +350,7 @@ class Crawler(asyncio.DatagramProtocol):
             try:
                 metainfo = await asyncio.wait_for(
                     get_metadata(
-                        infohash, addr[0], addr[1], loop=self.loop
+                        infohash, addr[0], addr[1]
                     ),
                     timeout=self.interval * 20)
             except:
