@@ -7,11 +7,9 @@ import ipaddress
 import logging
 import math
 import os
-import random
 import signal
-import time
 
-from socket import inet_ntoa
+from socket import inet_ntoa, inet_ntop, AF_INET6
 from struct import unpack
 
 import aiofiles
@@ -50,14 +48,23 @@ def random_node_id(size=20):
 
 def split_nodes(nodes):
     length = len(nodes)
-    if (length % 26) != 0:
+    # 26Bytes = 20Bytes NodeID + 4 Bytes IPv4 Address + 2Bytes Port
+    # 38Bytes = 20Bytes NodeID + 16Bytes IPv4 Address + 2Bytes Port
+    if (length % 26) != 0 and (length % 38) != 0:
         return
 
-    for i in range(0, length, 26):
-        nid = nodes[i:i + 20]
-        ip = inet_ntoa(nodes[i + 20:i + 24])
-        port = unpack('!H', nodes[i + 24:i + 26])[0]
-        yield nid, ip, port
+    if (length % 26) == 0:
+        for i in range(0, length, 26):
+            nid = nodes[i:i + 20]
+            ip = inet_ntoa(nodes[i + 20:i + 24])
+            port = unpack('!H', nodes[i + 24:i + 26])[0]
+            yield nid, ip, port
+    else:
+        for i in range(0, length, 38):
+            nid = nodes[i:i + 20]
+            ip = inet_ntop(AF_INET6, nodes[i + 20:i + 36])
+            port = unpack('!H', nodes[i + 36:i + 38])[0]
+            yield nid, ip, port
 
 
 def split_addr(addr_list):
@@ -145,7 +152,7 @@ class Crawler(asyncio.DatagramProtocol):
 
     def run(self, port=6881):
         coroutine = self.loop.create_datagram_endpoint(
-            lambda: self, local_addr=('0.0.0.0', port)
+            lambda: self, local_addr=('::', port)
         )
         transport, _ = self.loop.run_until_complete(coroutine)
 
@@ -225,6 +232,9 @@ class Crawler(asyncio.DatagramProtocol):
             return
         if b'nodes' in args:
             for node_id, ip, port in split_nodes(args[b'nodes']):
+                self.ping(addr=(ip, port))
+        if b'nodes6' in args:
+            for node_id, ip, port in split_nodes(args[b'nodes6']):
                 self.ping(addr=(ip, port))
 
     async def handle_query(self, msg, addr):
