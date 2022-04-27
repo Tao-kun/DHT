@@ -49,7 +49,7 @@ def random_node_id(size=20):
 def split_nodes(nodes):
     length = len(nodes)
     # 26Bytes = 20Bytes NodeID + 4 Bytes IPv4 Address + 2Bytes Port
-    # 38Bytes = 20Bytes NodeID + 16Bytes IPv4 Address + 2Bytes Port
+    # 38Bytes = 20Bytes NodeID + 16Bytes IPv6 Address + 2Bytes Port
     if (length % 26) != 0 and (length % 38) != 0:
         return
 
@@ -354,7 +354,7 @@ class Crawler(asyncio.DatagramProtocol):
     async def get_metainfo(self, infohash, addr):
         fail = False
         async with self.fetch_metainfo_semaphore:
-            filename = '{}{}{}.torrent'.format(cfg.get('torrent', 'save_path'), os.sep, infohash.lower())
+            filename = f'{cfg.get("torrent", "save_path")}{os.sep}{infohash.lower()}.torrent'
             if len(glob.glob(filename)) != 0:
                 return
             try:
@@ -379,11 +379,7 @@ class Crawler(asyncio.DatagramProtocol):
                     return
                 name = get_filename(metainfo)
                 size = get_file_size(metainfo)
-                logging.info(
-                    'Hash: {}. Name: {}. Size: {}'.format(
-                        infohash, name, sizeof_fmt(size)
-                    )
-                )
+                logging.info(f'Hash: {infohash}. Name: {name}. Size: {sizeof_fmt(size)}')
                 file_content = bencoder.bencode({b'info': metainfo})
                 async with aiofiles.open(filename, mode='wb') as f:
                     await f.write(file_content)
@@ -468,9 +464,9 @@ class Crawler(asyncio.DatagramProtocol):
                         await connect.commit()
                     await cursor.close()
             logging.info(
-                '{} torrent(s) in database, Fetching: {}, Pending: {}.'.format(
-                    torrent_count, announce_queue_fetching_count, announce_queue_pending_count
-                )
+                f'{torrent_count} torrent(s) in database, '
+                f'Fetching: {announce_queue_fetching_count}, '
+                f'Pending: {announce_queue_pending_count}.'
             )
             await asyncio.sleep(self.interval * 10)
 
