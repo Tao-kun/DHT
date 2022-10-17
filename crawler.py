@@ -11,6 +11,7 @@ import signal
 
 from socket import inet_ntoa, inet_ntop, AF_INET6
 from struct import unpack
+from types import NoneType
 
 import aiofiles
 import aiomysql
@@ -123,21 +124,21 @@ class Crawler(asyncio.DatagramProtocol):
     This class' implementation is from https://github.com/whtsky/maga/blob/master/maga.py
     '''
 
-    def __init__(self, loop=None, bootstrap_nodes=BOOTSTRAP_NODES, interval=3, store_statistic=False):
+    def __init__(self, loop=None, bootstrap_nodes=BOOTSTRAP_NODES, interval=3):
         self.node_id = random_node_id()
         self.transport = None
         self.loop = loop or asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
-        self.database_semaphore = asyncio.Semaphore(64)
         self.database_queue = asyncio.Queue()
         self.max_fetch_task = 128
+        self.max_database_semaphore = int(1.5 * self.max_fetch_task)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
+        self.database_semaphore = asyncio.Semaphore(self.max_database_semaphore)
         self.bootstrap_nodes = bootstrap_nodes
         self.__running = False
         self.interval = interval
-        self.store_statistic = store_statistic
 
     def stop(self):
         self.__running = False
@@ -352,7 +353,7 @@ class Crawler(asyncio.DatagramProtocol):
                     await cursor.close()
 
     async def get_metainfo(self, infohash, addr):
-        fail = False
+        timeout = False
         async with self.fetch_metainfo_semaphore:
             filename = f'{cfg.get("torrent", "save_path")}{os.sep}{infohash.lower()}.torrent'
             if len(glob.glob(filename)) != 0:
@@ -364,19 +365,21 @@ class Crawler(asyncio.DatagramProtocol):
                     ),
                     timeout=self.interval * 20)
             except:
-                fail = True
-            if fail or (isinstance(metainfo, bool) and metainfo is False):
-                async with self.database_semaphore:
-                    async with self.connection_pool.acquire() as connect:
-                        cursor = await connect.cursor()
-                        await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
-                        await connect.commit()
-                        await cursor.close()
-                return
-            if metainfo is not None:
-                # hash error
-                if infohash != get_meta_hash(metainfo):
-                    return
+                timeout = True
+            if timeout:
+                # Query timeout
+                await self.remove_info_from_queue(infohash)
+            elif isinstance(metainfo, bool) and metainfo is False:
+                # Mala return False
+                await self.remove_info_from_queue(infohash)
+            elif metainfo is None:
+                # Peer return None
+                await self.remove_info_from_queue(infohash)
+            elif metainfo is not None and infohash != get_meta_hash(metainfo):
+                # Metainfo's hash not equal query's hash
+                await self.remove_info_from_queue(infohash)
+            else:
+                # Other conditions
                 name = get_filename(metainfo)
                 size = get_file_size(metainfo)
                 logging.info(f'Hash: {infohash}. Name: {name}. Size: {sizeof_fmt(size)}')
@@ -398,9 +401,18 @@ class Crawler(asyncio.DatagramProtocol):
                             await connect.commit()
                         await cursor.close()
 
+    async def remove_info_from_queue(self, infohash):
+        async with self.database_semaphore:
+            async with self.connection_pool.acquire() as connect:
+                cursor = await connect.cursor()
+                await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
+                await connect.commit()
+                await cursor.close()
+
     async def auto_get_metainfo(self):
         async with self.database_semaphore:
             async with self.connection_pool.acquire() as connect:
+                # Clean locked, too old, stored info in announce queue
                 cursor = await connect.cursor()
                 await cursor.execute(base_sql.clean_announce_queue)
                 await cursor.execute(base_sql.remove_too_old_announce_queue)
@@ -456,12 +468,6 @@ class Crawler(asyncio.DatagramProtocol):
                     await cursor.execute(base_sql.announce_queue_pending_count)
                     (announce_queue_pending_count,) = await cursor.fetchone()
                     await connect.commit()
-                    if self.store_statistic:
-                        await cursor.execute(base_sql.save_statistic_log.format(
-                            totoal_count=torrent_count,
-                            fetching_count=announce_queue_fetching_count,
-                            pending_count=announce_queue_pending_count))
-                        await connect.commit()
                     await cursor.close()
             logging.info(
                 f'{torrent_count} torrent(s) in database, '
