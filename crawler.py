@@ -11,7 +11,6 @@ import signal
 
 from socket import inet_ntoa, inet_ntop, AF_INET6
 from struct import unpack
-from types import NoneType
 
 import aiofiles
 import aiomysql
