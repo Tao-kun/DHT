@@ -348,6 +348,7 @@ class Crawler(asyncio.DatagramProtocol):
                                 port=peer_info[2][1]))
                         await connect.commit()
                     except pymysql.err.OperationalError as e:
+                        # Dead lock
                         await connect.rollback()
                     await cursor.close()
 
@@ -367,16 +368,16 @@ class Crawler(asyncio.DatagramProtocol):
                 timeout = True
             if timeout:
                 # Query timeout
-                await self.remove_info_from_queue(infohash)
+                await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif isinstance(metainfo, bool) and metainfo is False:
                 # Mala return False
-                await self.remove_info_from_queue(infohash)
+                await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif metainfo is None:
                 # Peer return None
-                await self.remove_info_from_queue(infohash)
+                await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif metainfo is not None and infohash != get_meta_hash(metainfo):
                 # Metainfo's hash not equal query's hash
-                await self.remove_info_from_queue(infohash)
+                await self.remove_info_from_queue(infohash, addr[0], addr[1])
             else:
                 # Other conditions
                 name = get_filename(metainfo)
@@ -393,19 +394,24 @@ class Crawler(asyncio.DatagramProtocol):
                                 name=aiomysql.escape_string(name),
                                 info_hash=infohash,
                                 size=size))
-                        except pymysql.err.IntegrityError:
+                        except pymysql.err.IntegrityError as e:
+                            # Duplicated primary key
                             await connect.rollback()
                         finally:
                             await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
                             await connect.commit()
                         await cursor.close()
 
-    async def remove_info_from_queue(self, infohash):
+    async def remove_info_from_queue(self, infohash, ip_addr, port):
         async with self.database_semaphore:
             async with self.connection_pool.acquire() as connect:
                 cursor = await connect.cursor()
-                await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
-                await connect.commit()
+                try:
+                    await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash, ip_addr=ip_addr, port=port))
+                    await connect.commit()
+                except pymysql.err.OperationalError as e:
+                    # Dead lock
+                    await connect.rollback()
                 await cursor.close()
 
     async def auto_get_metainfo(self):
@@ -443,11 +449,12 @@ class Crawler(asyncio.DatagramProtocol):
                                 continue
                             infohash = data[0]
                             peer_addr = (data[1], data[2])
-                            await cursor.execute(base_sql.set_lock.format(info_hash=infohash))
+                            await cursor.execute(base_sql.set_lock.format(info_hash=infohash, ip_addr=peer_addr[0], port=peer_addr[1]))
                             await connect.commit()
                             asyncio.ensure_future(self.get_metainfo(infohash, peer_addr), loop=self.loop)
                         await connect.commit()
                     except pymysql.err.OperationalError as e:
+                        # Dead lock
                         await connect.rollback()
                     await cursor.close()
                 await asyncio.sleep(self.interval)
