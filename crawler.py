@@ -398,7 +398,7 @@ class Crawler(asyncio.DatagramProtocol):
                             # Duplicated primary key
                             await connect.rollback()
                         finally:
-                            await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash))
+                            await cursor.execute(base_sql.remove_from_announce_queue.format(info_hash=infohash, ip_addr=addr[0], port=addr[1]))
                             await connect.commit()
                         await cursor.close()
 
