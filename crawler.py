@@ -1,6 +1,5 @@
 import asyncio
 import binascii
-import configparser
 import glob
 import hashlib
 import ipaddress
@@ -17,20 +16,21 @@ import aiomysql
 import bencoder
 import chardet
 import pymysql
+import toml
 from mala import get_metadata
 
 import base_sql
 
-cfg = configparser.ConfigParser()
-cfg.read('config.ini')
+with open('config.toml', 'r') as f:
+    cfg = toml.load(f)
 
 connect_dict = {
-    'host': cfg.get('mysql', 'host'),
-    'port': int(cfg.get('mysql', 'port')),
-    'user': cfg.get('mysql', 'user'),
-    'password': cfg.get('mysql', 'password'),
-    'db': cfg.get('mysql', 'db'),
-    'charset': cfg.get('mysql', 'charset')
+    'host': cfg['mysql']['host'],
+    'port': cfg['mysql']['port'],
+    'user': cfg['mysql']['user'],
+    'password': cfg['mysql']['password'],
+    'db': cfg['mysql']['db'],
+    'charset': cfg['mysql']['charset']
 }
 logging.basicConfig(level=logging.INFO)
 
@@ -155,18 +155,15 @@ class Crawler(asyncio.DatagramProtocol):
             lambda: self, local_addr=('::', port)
         )
         transport, _ = self.loop.run_until_complete(coroutine)
-
         for signal_name in ('SIGINT', 'SIGTERM'):
             try:
                 self.loop.add_signal_handler(getattr(signal, signal_name), self.stop)
             except NotImplementedError:
                 # SIGINT and SIGTERM are not implemented on windows
                 pass
-
         for node in self.bootstrap_nodes:
             # Bootstrap
             self.find_node(addr=node)
-
         asyncio.ensure_future(self.auto_find_nodes(), loop=self.loop)
         asyncio.ensure_future(self.auto_get_metainfo(), loop=self.loop)
         asyncio.ensure_future(self.handle_database_queue(), loop=self.loop)
@@ -355,7 +352,7 @@ class Crawler(asyncio.DatagramProtocol):
     async def get_metainfo(self, infohash, addr):
         timeout = False
         async with self.fetch_metainfo_semaphore:
-            filename = f'{cfg.get("torrent", "save_path")}{os.sep}{infohash.lower()}.torrent'
+            filename = f'{cfg["torrent"]["save_path"]}{os.sep}{infohash.lower()}.torrent'
             if len(glob.glob(filename)) != 0:
                 return
             try:
