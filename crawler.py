@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import signal
+import time
 
 from socket import inet_ntoa, inet_ntop, AF_INET6
 from struct import unpack
@@ -118,6 +119,26 @@ BOOTSTRAP_NODES = (
 )
 
 
+class BlackList:
+    def __init__(self, timeout=86400):
+        self.black_set = set()
+        self.black_timer = dict()
+        self.timeout = timeout
+
+    async def add_black(self, addr):
+        if addr not in self.black_set:
+            self.black_set.add(addr)
+            self.black_timer[addr] = time.time() + self.timeout()
+    
+    async def check_black(self, addr):
+        if addr in self.black_set:
+            if self.black_timer[addr] <= time.time():
+                return True
+            else:
+                self.black_set.remove(addr)
+        return False
+
+
 class Crawler(asyncio.DatagramProtocol):
     '''
     This class' implementation is from https://github.com/whtsky/maga/blob/master/maga.py
@@ -133,6 +154,8 @@ class Crawler(asyncio.DatagramProtocol):
         self.queue_size = 1024
         self.announce_queue = asyncio.Queue(self.queue_size)
         self.peers_queue = asyncio.Queue(self.queue_size)
+        self.fail_counter = dict()
+        self.blacklist = BlackList()
         self.max_fetch_task = 128
         self.max_database_semaphore = int(1.5 * self.max_fetch_task)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
@@ -328,6 +351,15 @@ class Crawler(asyncio.DatagramProtocol):
             return
         await self.announce_queue.put((infohash, addr, peer_addr))
 
+    async def add_fail_counter(self, addr):
+        # A counter for fail request
+        if addr not in self.fail_counter.keys():
+            self.fail_counter[addr] = 0
+        self.fail_counter[addr] += 1
+        if self.fail_counter[addr] >= 32:
+            self.blacklist.add_black(addr)
+            self.fail_counter[addr] = 0
+
     async def handle_announce_queue(self):
         while self.__running:
             if self.announce_queue.empty():
@@ -344,6 +376,9 @@ class Crawler(asyncio.DatagramProtocol):
                     try:
                         cursor = await connect.cursor()
                         for peer_info in peer_list:
+                            # Check if the target is in the blacklist
+                            if self.blacklist.check_black((peer_info[2][0], peer_info[2][1])):
+                                continue
                             await cursor.execute(base_sql.insert_into_announce_queue.format(
                                 info_hash=peer_info[0],
                                 ip_addr=peer_info[2][0],
@@ -355,6 +390,10 @@ class Crawler(asyncio.DatagramProtocol):
                     await cursor.close()
 
     async def get_metainfo(self, infohash, addr):
+        # Check if the target is in the blacklist
+        if self.blacklist.check_black(addr):
+            await self.remove_info_from_queue(infohash, addr[0], addr[1])
+            return False
         timeout = False
         async with self.fetch_metainfo_semaphore:
             filename = f'{cfg["torrent"]["save_path"]}{os.sep}{infohash.lower()}.torrent'
@@ -373,9 +412,11 @@ class Crawler(asyncio.DatagramProtocol):
                 await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif isinstance(metainfo, bool) and metainfo is False:
                 # Mala return False
+                await self.add_fail_counter(addr)
                 await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif metainfo is None:
                 # Peer return None
+                await self.add_fail_counter(addr)
                 await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif metainfo is not None and infohash != get_meta_hash(metainfo):
                 # Metainfo's hash not equal query's hash
