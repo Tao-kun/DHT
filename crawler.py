@@ -129,7 +129,7 @@ class BlackList:
         if addr not in self.black_set:
             self.black_set.add(addr)
             self.black_timer[addr] = time.time() + self.timeout()
-    
+
     def check_black(self, addr):
         if addr in self.black_set:
             if self.black_timer[addr] <= time.time():
@@ -356,7 +356,7 @@ class Crawler(asyncio.DatagramProtocol):
         if addr not in self.fail_counter.keys():
             self.fail_counter[addr] = 0
         self.fail_counter[addr] += 1
-        if self.fail_counter[addr] >= 32:
+        if self.fail_counter[addr] >= 16:
             self.blacklist.add_black(addr)
             self.fail_counter[addr] = 0
 
