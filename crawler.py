@@ -357,6 +357,7 @@ class Crawler(asyncio.DatagramProtocol):
             self.fail_counter[addr] = 0
         self.fail_counter[addr] += 1
         if self.fail_counter[addr] >= 16:
+            logging.info(f'Add {addr[0]}:{addr[1]} into black list because {self.fail_counter[addr]} times fail request')
             self.blacklist.add_black(addr)
             self.fail_counter[addr] = 0
 
