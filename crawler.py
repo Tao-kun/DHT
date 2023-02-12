@@ -130,7 +130,9 @@ class Crawler(asyncio.DatagramProtocol):
         asyncio.set_event_loop(self.loop)
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
-        self.announce_queue = asyncio.Queue()
+        self.queue_size = 1024
+        self.announce_queue = asyncio.Queue(self.queue_size)
+        self.peers_queue = asyncio.Queue(self.queue_size)
         self.max_fetch_task = 128
         self.max_database_semaphore = int(1.5 * self.max_fetch_task)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
@@ -166,7 +168,7 @@ class Crawler(asyncio.DatagramProtocol):
             self.find_node(addr=node)
         asyncio.ensure_future(self.auto_find_nodes(), loop=self.loop)
         asyncio.ensure_future(self.auto_get_metainfo(), loop=self.loop)
-        asyncio.ensure_future(self.handle_database_queue(), loop=self.loop)
+        asyncio.ensure_future(self.handle_announce_queue(), loop=self.loop)
         asyncio.ensure_future(self.info_logger(), loop=self.loop)
         self.loop.run_forever()
         self.loop.close()
@@ -184,7 +186,10 @@ class Crawler(asyncio.DatagramProtocol):
 
     def find_node(self, addr, target_node_id=None):
         if not target_node_id:
-            target_node_id = random_node_id()
+            if self.peers_queue.empty():
+                target_node_id = random_node_id()
+            else:
+                target_node_id = self.peers_queue.get_nowait()
         self.send_message({
             't': 'aa',
             'y': 'q',
@@ -309,9 +314,9 @@ class Crawler(asyncio.DatagramProtocol):
         #        addr, infohash
         #    )
         # )
-        # if len(infohash) != 40:
-        #    return
-        pass
+        if len(infohash) != 40:
+           return
+        await self.peers_queue.put((infohash, addr))
 
     async def handle_announce_peer(self, infohash, addr, peer_addr):
         # logging.info(
@@ -323,7 +328,7 @@ class Crawler(asyncio.DatagramProtocol):
             return
         await self.announce_queue.put((infohash, addr, peer_addr))
 
-    async def handle_database_queue(self):
+    async def handle_announce_queue(self):
         while self.__running:
             if self.announce_queue.empty():
                 await asyncio.sleep(self.interval)
