@@ -132,9 +132,12 @@ class BlackList:
 
     def check_black(self, addr):
         if addr in self.black_set:
-            if self.black_timer[addr] <= time.time():
+            if self.black_timer[addr] >= time.time():
+                # Valid
                 return True
             else:
+                # Banned time out
+                self.black_timer[addr] = 0
                 self.black_set.remove(addr)
         return False
 
