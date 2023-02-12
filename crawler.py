@@ -212,7 +212,7 @@ class Crawler(asyncio.DatagramProtocol):
 
     def find_node(self, addr, target_node_id=None):
         if not target_node_id:
-            if self.peers_queue.empty():
+            if self.node_queue.empty():
                 target_node_id = random_node_id()
             else:
                 target_node_id = self.node_queue.get_nowait()
