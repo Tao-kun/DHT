@@ -154,6 +154,7 @@ class Crawler(asyncio.DatagramProtocol):
         self.queue_size = 1024
         self.announce_queue = asyncio.Queue(self.queue_size)
         self.peers_queue = asyncio.Queue(self.queue_size)
+        self.node_queue = asyncio.Queue(self.queue_size)
         self.fail_counter = dict()
         self.blacklist = BlackList()
         self.max_fetch_task = 128
@@ -174,6 +175,8 @@ class Crawler(asyncio.DatagramProtocol):
             await asyncio.sleep(self.interval)
             for node in self.bootstrap_nodes:
                 self.find_node(addr=node)
+            for node in self.bootstrap_nodes:
+                self.find_peers(addr=node)
 
     def run(self, port=6881):
         coroutine = self.loop.create_datagram_endpoint(
@@ -212,7 +215,7 @@ class Crawler(asyncio.DatagramProtocol):
             if self.peers_queue.empty():
                 target_node_id = random_node_id()
             else:
-                target_node_id = self.peers_queue.get_nowait()
+                target_node_id = self.node_queue.get_nowait()
         self.send_message({
             't': 'aa',
             'y': 'q',
@@ -220,6 +223,22 @@ class Crawler(asyncio.DatagramProtocol):
             'a': {
                 'id': self.node_id,
                 'target': target_node_id
+            }
+        }, addr=addr)
+
+    def find_peers(self, addr, target_peer_id=None):
+        if not target_peer_id:
+            if self.peers_queue.empty():
+                target_peer_id = random_node_id()
+            else:
+                target_peer_id = self.peers_queue.get_nowait()
+        self.send_message({
+            't': 'aa',
+            'y': 'q',
+            'q': 'get_peers',
+            'a': {
+                'id': self.node_id,
+                'info_hash': target_peer_id
             }
         }, addr=addr)
 
@@ -303,6 +322,7 @@ class Crawler(asyncio.DatagramProtocol):
             await self.handle_announce_peer(proper_infohash(infohash), addr, peer_addr)
         elif query_type == b'find_node':
             target_id = msg[b't']
+            target_node_id = args[b'target']
             self.send_message({
                 't': target_id,
                 'y': 'r',
@@ -311,6 +331,7 @@ class Crawler(asyncio.DatagramProtocol):
                     'nodes': ''
                 }
             }, addr=addr)
+            await self.node_queue.put(target_node_id)
         elif query_type == b'ping':
             self.send_message({
                 't': 'tt',
@@ -337,7 +358,7 @@ class Crawler(asyncio.DatagramProtocol):
         #        addr, infohash
         #    )
         # )
-        if len(infohash) != 40 or self.blacklist.check_black(addr):
+        if len(infohash) != 40 or self.blacklist.check_black(f'{addr[0]}:{addr[1]}'):
            return
         await self.peers_queue.put(infohash)
 
@@ -347,12 +368,14 @@ class Crawler(asyncio.DatagramProtocol):
         #        addr, infohash, peer_addr
         #    )
         # )
-        if len(infohash) != 40:
+        if len(infohash) != 40 or self.blacklist.check_black(f'{addr[0]}:{addr[1]}'):
             return
         await self.announce_queue.put((infohash, addr, peer_addr))
 
     async def add_fail_counter(self, addr):
         # A counter for fail request
+        if self.blacklist.check_black(addr):
+            return
         if addr not in self.fail_counter.keys():
             self.fail_counter[addr] = 0
         self.fail_counter[addr] += 1
