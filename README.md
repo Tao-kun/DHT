@@ -1,3 +1,3 @@
 # DHT Crawler
 
-Based on [Maga](https://github.com/whtsky/maga) and add mysql backend
+A DHT crawler based on [Maga](https://github.com/whtsky/maga) with a MySQL database.
