@@ -128,7 +128,7 @@ class BlackList:
     def add_black(self, addr):
         if addr not in self.black_set:
             self.black_set.add(addr)
-            self.black_timer[addr] = time.time() + self.timeout()
+            self.black_timer[addr] = time.time() + self.timeout
 
     def check_black(self, addr):
         if addr in self.black_set:
