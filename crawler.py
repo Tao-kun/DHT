@@ -130,7 +130,7 @@ class Crawler(asyncio.DatagramProtocol):
         asyncio.set_event_loop(self.loop)
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
-        self.database_queue = asyncio.Queue()
+        self.announce_queue = asyncio.Queue()
         self.max_fetch_task = 128
         self.max_database_semaphore = int(1.5 * self.max_fetch_task)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
@@ -321,17 +321,17 @@ class Crawler(asyncio.DatagramProtocol):
         # )
         if len(infohash) != 40:
             return
-        await self.database_queue.put((infohash, addr, peer_addr))
+        await self.announce_queue.put((infohash, addr, peer_addr))
 
     async def handle_database_queue(self):
         while self.__running:
-            if self.database_queue.empty():
+            if self.announce_queue.empty():
                 await asyncio.sleep(self.interval)
                 continue
             peer_list = []
-            while not self.database_queue.empty():
+            while not self.announce_queue.empty():
                 try:
-                    peer_list.append(self.database_queue.get_nowait())
+                    peer_list.append(self.announce_queue.get_nowait())
                 except asyncio.QueueEmpty as e:
                     break
             async with self.database_semaphore:
