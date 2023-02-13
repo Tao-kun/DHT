@@ -7,7 +7,6 @@ import logging
 import math
 import os
 import signal
-import time
 
 from socket import inet_ntoa, inet_ntop, AF_INET6
 from struct import unpack
@@ -16,7 +15,6 @@ import aiofiles
 import aiomysql
 import bencoder
 import chardet
-import pylru
 import pymysql
 import toml
 from mala import get_metadata
