@@ -7,6 +7,7 @@ import logging
 import math
 import os
 import signal
+import time
 
 from socket import inet_ntoa, inet_ntop, AF_INET6
 from struct import unpack
@@ -150,10 +151,9 @@ class Crawler(asyncio.DatagramProtocol):
         asyncio.set_event_loop(self.loop)
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
-        self.queue_size = 2048
-        self.announce_queue = asyncio.Queue(self.queue_size)
-        self.peers_queue = asyncio.Queue(self.queue_size)
-        self.node_queue = asyncio.Queue(self.queue_size)
+        self.announce_queue = asyncio.Queue()
+        self.peers_queue = asyncio.Queue()
+        self.node_queue = asyncio.Queue()
         self.max_fetch_task = 128
         self.max_database_semaphore = int(1.5 * self.max_fetch_task)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
