@@ -118,6 +118,26 @@ BOOTSTRAP_NODES = (
 )
 
 
+class BlackList:
+    def __init__(self, timeout=86400):
+        self.black_set = set()
+        self.black_timer = dict()
+        self.timeout = timeout
+
+    def add_black(self, addr):
+        if addr not in self.black_set:
+            self.black_set.add(addr)
+            self.black_timer[addr] = time.time() + self.timeout
+
+    def check_black(self, addr):
+        if addr in self.black_set:
+            if self.black_timer[addr] <= time.time():
+                return True
+            else:
+                self.black_set.remove(addr)
+        return False
+
+
 class Crawler(asyncio.DatagramProtocol):
     '''
     This class' implementation is from https://github.com/whtsky/maga/blob/master/maga.py
