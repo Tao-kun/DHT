@@ -132,9 +132,12 @@ class BlackList:
 
     def check_black(self, addr):
         if addr in self.black_set:
-            if self.black_timer[addr] <= time.time():
+            if self.black_timer[addr] >= time.time():
+                # Valid
                 return True
             else:
+                # Banned time out
+                self.black_timer[addr] = 0
                 self.black_set.remove(addr)
         return False
 
@@ -154,6 +157,8 @@ class Crawler(asyncio.DatagramProtocol):
         self.announce_queue = asyncio.Queue()
         self.peers_queue = asyncio.Queue()
         self.node_queue = asyncio.Queue()
+        self.fail_counter = dict()
+        self.blacklist = BlackList()
         self.max_fetch_task = 128
         self.max_database_semaphore = int(1.5 * self.max_fetch_task)
         self.fetch_metainfo_semaphore = asyncio.Semaphore(self.max_fetch_task)
@@ -355,7 +360,7 @@ class Crawler(asyncio.DatagramProtocol):
         #        addr, infohash
         #    )
         # )
-        if len(infohash) != 40:
+        if len(infohash) != 40 or self.blacklist.check_black(f'{addr[0]}:{addr[1]}'):
            return
         await self.peers_queue.put(infohash)
 
@@ -365,9 +370,22 @@ class Crawler(asyncio.DatagramProtocol):
         #        addr, infohash, peer_addr
         #    )
         # )
-        if len(infohash) != 40:
+        if len(infohash) != 40 or self.blacklist.check_black(f'{addr[0]}:{addr[1]}'):
             return
         await self.announce_queue.put((infohash, addr, peer_addr))
+
+    async def add_fail_counter(self, addr):
+        # A counter for fail request
+        if self.blacklist.check_black(addr):
+            return
+        if addr not in self.fail_counter.keys():
+            self.fail_counter[addr] = 0
+        self.fail_counter[addr] += 1
+        if self.fail_counter[addr] >= 16:
+            logging.info(
+                f'Add {addr} into black list because {self.fail_counter[addr]} times fail request')
+            self.blacklist.add_black(addr)
+            self.fail_counter[addr] = 0
 
     async def handle_announce_queue(self):
         while self.__running:
@@ -385,6 +403,9 @@ class Crawler(asyncio.DatagramProtocol):
                     try:
                         cursor = await connect.cursor()
                         for peer_info in peer_list:
+                            # Check if the target is in the blacklist
+                            if self.blacklist.check_black(f'{peer_info[2][0]}:{peer_info[2][1]}'):
+                                continue
                             await cursor.execute(base_sql.insert_into_announce_queue.format(
                                 info_hash=peer_info[0],
                                 ip_addr=peer_info[2][0],
@@ -396,6 +417,10 @@ class Crawler(asyncio.DatagramProtocol):
                     await cursor.close()
 
     async def get_metainfo(self, infohash, addr):
+        # Check if the target is in the blacklist
+        if self.blacklist.check_black(f'{addr[0]}:{addr[1]}'):
+            await self.remove_info_from_queue(infohash, addr[0], addr[1])
+            return False
         timeout = False
         async with self.fetch_metainfo_semaphore:
             filename = f'{cfg["torrent"]["save_path"]}{os.sep}{infohash.lower()}.torrent'
@@ -411,15 +436,19 @@ class Crawler(asyncio.DatagramProtocol):
                 timeout = True
             if timeout:
                 # Query timeout
+                await self.add_fail_counter(f'{addr[0]}:{addr[1]}')
                 await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif isinstance(metainfo, bool) and metainfo is False:
                 # Mala return False
+                await self.add_fail_counter(f'{addr[0]}:{addr[1]}')
                 await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif metainfo is None:
                 # Peer return None
+                await self.add_fail_counter(f'{addr[0]}:{addr[1]}')
                 await self.remove_info_from_queue(infohash, addr[0], addr[1])
             elif metainfo is not None and infohash != get_meta_hash(metainfo):
                 # Metainfo's hash not equal query's hash
+                await self.add_fail_counter(f'{addr[0]}:{addr[1]}')
                 await self.remove_info_from_queue(infohash, addr[0], addr[1])
             else:
                 # Other conditions
