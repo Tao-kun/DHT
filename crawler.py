@@ -154,6 +154,7 @@ class Crawler(asyncio.DatagramProtocol):
         asyncio.set_event_loop(self.loop)
         self.connection_pool = self.loop.run_until_complete(aiomysql.create_pool(loop=self.loop, **connect_dict))
         self.database_batch = 48
+        self.queue_size = 2048
         self.announce_queue = asyncio.Queue()
         self.peers_queue = asyncio.Queue()
         self.node_queue = asyncio.Queue()
@@ -170,6 +171,16 @@ class Crawler(asyncio.DatagramProtocol):
     def stop(self):
         self.__running = False
         self.loop.call_later(self.interval, self.loop.stop)
+
+    async def auto_clear_queue(self):
+        while self.__running:
+            await asyncio.sleep(self.interval)
+            if self.peers_queue.qsize() > self.queue_size:
+                while not self.peers_queue.empty():
+                    self.peers_queue.get_nowait()
+            if self.node_queue.qsize() > self.queue_size:
+                while not self.node_queue.empty():
+                    self.node_queue.get_nowait()
 
     async def auto_find_nodes(self):
         self.__running = True
@@ -198,6 +209,7 @@ class Crawler(asyncio.DatagramProtocol):
         asyncio.ensure_future(self.auto_get_metainfo(), loop=self.loop)
         asyncio.ensure_future(self.handle_announce_queue(), loop=self.loop)
         asyncio.ensure_future(self.info_logger(), loop=self.loop)
+        asyncio.ensure_future(self.auto_clear_queue(), loop=self.loop)
         self.loop.run_forever()
         self.loop.close()
 
